@@ -20,29 +20,41 @@ func main() {
 	fmt.Printf("Reading data from %s\n", inputFilePath)
 	fmt.Println("=====================================")
 
-	currentLine := []byte{}
-	for {
-		slice := make([]byte, 8)
-		n, err := f.Read(slice)
-		if n > 0 {
-			for _, b := range slice[:n] {
-				if b == '\n' {
-					fmt.Printf("read: %s\n", string(currentLine))
-					currentLine = currentLine[:0]
-				} else {
-					currentLine = append(currentLine, b)
+	lines := getLinesChannel(f)
+	for line := range lines {
+		fmt.Printf("read: %s\n", line)
+	}
+}
+
+func getLinesChannel(f io.ReadCloser) <-chan string {
+	ch := make(chan string)
+	go func() {
+		defer close(ch)
+		currentLine := []byte{}
+		for {
+			slice := make([]byte, 8)
+			n, err := f.Read(slice)
+			if n > 0 {
+				for _, b := range slice[:n] {
+					if b == '\n' {
+						ch <- string(currentLine)
+						currentLine = currentLine[:0]
+					} else {
+						currentLine = append(currentLine, b)
+					}
 				}
 			}
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error reading file: %s\n", err)
+				break
+			}
 		}
-		if errors.Is(err, io.EOF) {
-			break
+		if len(currentLine) > 0 {
+			ch <- string(currentLine)
 		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading file: %s\n", err)
-			break
-		}
-	}
-	if len(currentLine) > 0 {
-		fmt.Printf("read: %s\n", string(currentLine))
-	}
+	}()
+	return ch
 }
